@@ -1,0 +1,45 @@
+# Pipeline do miniprojeto de DevOps com IA generativa (GitLab CI).
+# Dois estágios: testes automatizados e, SOMENTE em caso de falha, o diagnóstico com IA.
+# A falha é injetada de forma controlada pela variável INJECT_BUG (ver src/rag_api/config.py).
+
+stages:
+  - test
+  - ai-diagnosis
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  # Defina INJECT_BUG=1 nas variáveis do pipeline (ou no disparo manual) para reproduzir a falha.
+  INJECT_BUG: "0"
+
+cache:
+  paths:
+    - .cache/pip
+
+testes:
+  stage: test
+  image: python:3.12-slim
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements-dev.txt
+  script:
+    - set -o pipefail
+    - python -m pytest -v | tee docs/devops-ai/pytest-failure.log
+  artifacts:
+    when: always
+    paths:
+      - docs/devops-ai/pytest-failure.log
+    expire_in: 1 week
+
+diagnostico-ia:
+  stage: ai-diagnosis
+  image: python:3.12-slim
+  when: on_failure            # roda apenas se o estágio de testes falhar
+  script:
+    - python scripts/ai_diagnose.py --log docs/devops-ai/pytest-failure.log --out-prompt docs/devops-ai/ai-prompt.md
+    # Com OPENAI_API_KEY/ANTHROPIC_API_KEY e GITLAB_API_TOKEN configurados, o agente
+    # publicaria o diagnóstico como comentário no Merge Request (ver scripts/ai_diagnose.py).
+  artifacts:
+    when: always
+    paths:
+      - docs/devops-ai/ai-prompt.md
+    expire_in: 1 week

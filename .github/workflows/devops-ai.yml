@@ -1,0 +1,62 @@
+# Equivalente do pipeline em GitHub Actions (o repositório está no GitHub).
+# Job de testes + job de diagnóstico com IA que só roda quando os testes falham.
+# A falha é injetada de forma controlada pela entrada "inject_bug" do disparo manual.
+
+name: DevOps GenAI (RAG)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      inject_bug:
+        description: "Injetar a falha controlada (1 = sim)"
+        default: "0"
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    env:
+      # Usa a entrada do disparo manual; nos demais gatilhos fica "0" (sem bug).
+      INJECT_BUG: ${{ github.event.inputs.inject_bug || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Rodar testes (salva o log como artefato)
+        run: |
+          set -o pipefail
+          python -m pytest -v | tee docs/devops-ai/pytest-failure.log
+      - name: Publicar log dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log
+          path: docs/devops-ai/pytest-failure.log
+
+  diagnostico-ia:
+    needs: testes
+    if: failure()               # só roda se o job de testes falhar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-log
+          path: docs/devops-ai/
+      - name: Diagnóstico com IA (monta o prompt; não falha o pipeline sem chave)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/ai_diagnose.py --log docs/devops-ai/pytest-failure.log --out-prompt docs/devops-ai/ai-prompt.md
+      - name: Publicar o prompt de diagnóstico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-prompt
+          path: docs/devops-ai/ai-prompt.md
