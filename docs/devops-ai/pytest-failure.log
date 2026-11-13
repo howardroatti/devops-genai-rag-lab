@@ -1,0 +1,45 @@
+$ INJECT_BUG=1 python -m pytest -q
+(caminhos de usuário anonimizados como <HOME>; segredos mascarados)
+
+============================= test session starts =============================
+platform linux -- Python 3.12, pytest-9.1.1
+rootdir: <HOME>/devops-genai-rag-lab
+collected 13 items
+
+tests/test_casos_erro.py ......                                          [ 46%]
+tests/test_cenarios_integracao.py F..F                                   [ 76%]
+tests/test_contrato_api.py FF.                                           [100%]
+
+================================== FAILURES ===================================
+____________ test_fluxo_completo_retorna_resposta_ancorada_com_fontes ____________
+
+src/rag_api/api.py:69: in perguntar
+    resultado = orquestrador.responder(pedido.pergunta, set(pedido.permissoes))
+
+self = <rag_api.orquestrador.Orquestrador object at 0x...>
+pergunta = 'Quantos dias de férias eu tenho?', permissoes = set()
+
+    def responder(self, pergunta: str, permissoes: set[str]) -> Resposta:
+        ok, motivo = self._guardrails.validar_entrada(pergunta)
+        if not ok:
+            self._auditoria.registrar(RegistroAuditoria(pergunta, "bloqueado"))
+            return Resposta("bloqueado", f"Não posso responder: {motivo}.", [])
+
+        consulta = self._embedder.gerar(pergunta)
+        recuperados = self._banco.buscar(consulta, permissoes)
+
+        limiar = ler_limiar_confianca()
+>       if not recuperados or recuperados[0][1] < limiar:
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: '<' not supported between instances of 'float' and 'str'
+
+src/rag_api/orquestrador.py:55: TypeError
+=========================== short test summary info ===========================
+FAILED tests/test_cenarios_integracao.py::test_fluxo_completo_retorna_resposta_ancorada_com_fontes
+FAILED tests/test_cenarios_integracao.py::test_pergunta_sobre_reembolso_recupera_documento_de_reembolso
+FAILED tests/test_cenarios_integracao.py::test_usuario_com_permissao_rh_acessa_documento_restrito
+FAILED tests/test_casos_erro.py::test_sem_contexto_relevante_retorna_fallback_sem_alucinar
+FAILED tests/test_casos_erro.py::test_documento_restrito_nao_vaza_para_usuario_sem_permissao
+FAILED tests/test_contrato_api.py::test_resposta_respeita_o_contrato_de_schema
+FAILED tests/test_contrato_api.py::test_sem_contexto_mantem_o_mesmo_contrato_com_fontes_vazias
+7 failed, 6 passed in 6.70s
